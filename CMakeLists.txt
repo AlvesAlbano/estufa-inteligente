@@ -37,7 +37,6 @@ pico_sdk_init()
 
 add_executable(estufa-inteligente 
 estufa-inteligente.c
-fds.c
 WIFI.c
 MQTT.c
 Oled.c
