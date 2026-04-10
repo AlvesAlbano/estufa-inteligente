@@ -14,7 +14,7 @@ extern BrokerModel brokerModel;
 extern bool mqttConectado;
 
 void BrokerConectar(BrokerModel *config);
-void MQTTPublicar(const char *msg, const char *topico);
+void MQTTPublicar(const char *payload, const char *topico);
 void MQTTInscrever(const char *topico);
 
 #endif

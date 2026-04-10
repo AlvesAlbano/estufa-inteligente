@@ -114,8 +114,8 @@ void BrokerConectar(BrokerModel *config) {
     dns_gethostbyname(config->HOST, &broker_ip, dns_found, config);
 }
 
-void MQTTPublicar(const char *msg, const char *topico) {
-    mqtt_publish(client, topico, msg, strlen(msg), 0, 0, mqtt_pub_request_cb, NULL);
+void MQTTPublicar(const char *payload, const char *topico) {
+    mqtt_publish(client, topico, payload, strlen(payload), 0, 0, mqtt_pub_request_cb, NULL);
 }
 
 void MQTTInscrever(const char *topico){
