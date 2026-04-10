@@ -17,7 +17,9 @@
 ssd1306_t OLED_SSD;
 
 void inicializarOled();
-void printOled(char *texto);
+void printOled(const char* texto);
+void appendOled(const char* texto, int x, int y);
+void limparOled();
 
 void inicializarOled(){
     i2c_init(I2C_PORT,HERTZ);
@@ -33,8 +35,18 @@ void inicializarOled(){
     ssd1306_show(&OLED_SSD);
 }
 
-void printOled(char *texto){
+void printOled(const char* texto){
     ssd1306_clear(&OLED_SSD);
     ssd1306_draw_string(&OLED_SSD,0,0,1,texto);
     ssd1306_show(&OLED_SSD);
+}
+
+void appendOled(const char* texto, int x, int y){
+    ssd1306_draw_string(&OLED_SSD,x,y,1,texto);
+    ssd1306_show(&OLED_SSD);
+
+}
+
+void limparOled(){
+    ssd1306_clear(&OLED_SSD);
 }
