@@ -16,5 +16,6 @@ extern bool mqttConectado;
 void BrokerConectar(BrokerModel *config);
 void MQTTPublicar(const char *payload, const char *topico);
 void MQTTInscrever(const char *topico);
-
+void MQTTInscreverMultiplos(const char *topicos[],int tamanho);
+const char* MQTTReceber();
 #endif

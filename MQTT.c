@@ -1,9 +1,10 @@
 #include <stdio.h>
 #include <string.h>
+
+#include "pico/stdlib.h"
 #include "lwip/apps/mqtt.h"
 #include "lwip/ip_addr.h"
 #include "lwip/dns.h"
-
 
 #define MQTT_MSG_MAX 100
 
@@ -35,12 +36,10 @@ bool mqttConectado = false;
 void BrokerConectar(BrokerModel *config);
 void MQTTPublicar(const char *msg, const char *topico);
 void MQTTInscrever(const char *topico);
-void logMsg(char* msg);
-void logTop(const char* msg);
+void MQTTInscreverMultiplos(const char *topicos[],int tamanho);
 
 static void mqtt_incoming_publish_cb(void *arg, const char *topic, u32_t tot_len) {
-    logTop(topic);
-    printf("Topico: %s\n", topic);
+    // printf("Topico: %s\n", topic);
 }
 
 static void mqtt_incoming_data_cb(void *arg, const u8_t *data, u16_t len, u8_t flags) {
@@ -49,8 +48,7 @@ static void mqtt_incoming_data_cb(void *arg, const u8_t *data, u16_t len, u8_t f
 
     memcpy(ultimaMensagem, data, len);
     ultimaMensagem[len] = '\0';
-    logMsg(ultimaMensagem);
-    printf("Mensagem: %s\n",ultimaMensagem);
+    // printf("Mensagem: %s\n",ultimaMensagem);
 
     novaMensagem = true;
 }
@@ -61,9 +59,7 @@ static void mqtt_connection_cb(mqtt_client_t *client, void *arg, mqtt_connection
 
         BrokerModel *config = (BrokerModel *)arg;
 
-        // Subscribe após conectar
         mqttConectado = true;
-        mqtt_subscribe(client, "projeto/teste", 0, NULL, NULL);
 
     } else {
         mqttConectado = false;
@@ -103,7 +99,6 @@ static void mqtt_pub_request_cb(void *arg, err_t err) {
     if (err == ERR_OK) {
         printf("Mensagem enviada com sucesso!\n");
 
-        // mqtt_disconnect(client);
     } else {
         printf("Erro ao publicar: %d\n", err);
     }
@@ -122,6 +117,18 @@ void MQTTInscrever(const char *topico){
     mqtt_subscribe(client, topico, 0, NULL, NULL);
 }
 
+void MQTTInscreverMultiplos(const char *topicos[],int tamanho){
+
+    for(int i = 0;i < tamanho;i++){
+        const char* topicoAtual = topicos[i];
+        mqtt_subscribe(client, topicoAtual, 0, NULL, NULL);
+        printf("%s\n",topicoAtual);
+        sleep_ms(500);
+    }
+    printf("inscrito em todos os topicos!\n");
+
+}
+
 const char* MQTTReceber() {
     if (novaMensagem) {
         novaMensagem = false;
@@ -129,12 +136,3 @@ const char* MQTTReceber() {
     }
     return NULL;
 }
-
-void logTop(const char* topico){
-    printf("%s\n",topico);
-}
-
-void logMsg(char* msg){
-    printf("%s\n",msg);
-}
-

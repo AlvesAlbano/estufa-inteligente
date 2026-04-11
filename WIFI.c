@@ -6,7 +6,7 @@
 #define SENHA_REDE "23280915"
 
 void conectarRede();
-bool redeConectada();
+bool redeConectada = false;
 
 void conectarRede() {
     if (cyw43_arch_init()) {
@@ -28,9 +28,6 @@ void conectarRede() {
         return;
     }
 
+    redeConectada = true;
     printf("Conectado com sucesso na rede %s!\n",NOME_REDE);
-}
-
-bool redeConectada(){
-    return false;
 }

@@ -43,6 +43,8 @@ Oled.c
 ssd1306.c
 joystick.c
 botao.c
+temperatura-interna.c
+tomada-decisoes.c
 )
 
 pico_set_program_name(estufa-inteligente "estufa-inteligente")
