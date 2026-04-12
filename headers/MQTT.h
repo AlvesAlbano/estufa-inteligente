@@ -12,6 +12,7 @@ typedef struct {
 
 extern BrokerModel brokerModel;
 extern bool mqttConectado;
+extern char ultimoTopico[100];
 
 void BrokerConectar(BrokerModel *config);
 void MQTTPublicar(const char *payload, const char *topico);

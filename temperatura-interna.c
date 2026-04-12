@@ -6,7 +6,6 @@ float pegarTemperatura();
 float converterCelcius(float voltage);
 
 float pegarTemperatura(){
-    inicializarTemperatura();
     uint16_t raw = adc_read();
     // Convert raw value to voltage (assuming 3.3V ref)
     const float conversion_factor = 3.3f / (1 << 12);

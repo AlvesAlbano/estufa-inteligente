@@ -41,10 +41,14 @@ WIFI.c
 MQTT.c
 Oled.c
 ssd1306.c
+cJSON.c # https://github.com/DaveGamble/cJSON
 joystick.c
 botao.c
 temperatura-interna.c
 tomada-decisoes.c
+flash.c
+lfs.c
+lfs_util.c
 )
 
 pico_set_program_name(estufa-inteligente "estufa-inteligente")
@@ -63,6 +67,8 @@ target_link_libraries(estufa-inteligente
 target_include_directories(estufa-inteligente PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}
         ${CMAKE_CURRENT_LIST_DIR}/headers
+        ${CMAKE_CURRENT_LIST_DIR}/src/headers
+        ${CMAKE_CURRENT_LIST_DIR}/libs/headers
 )
 
 target_link_libraries(estufa-inteligente 
@@ -78,8 +84,8 @@ target_link_libraries(estufa-inteligente
         pico_cyw43_arch_lwip_threadsafe_background
         hardware_i2c
         hardware_adc
-        # ssd1306
-        # font
+        hardware_pwm
+        hardware_clocks
         )
 
 pico_add_extra_outputs(estufa-inteligente)

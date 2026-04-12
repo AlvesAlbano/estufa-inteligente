@@ -9,7 +9,12 @@
 #define MQTT_MSG_MAX 100
 
 char ultimaMensagem[MQTT_MSG_MAX];
+char ultimoTopico[100];
+
 bool novaMensagem = false;
+
+char buffer[MQTT_MSG_MAX];
+int buffer_len = 0;
 
 mqtt_client_t *client;
 ip_addr_t broker_ip;
@@ -39,18 +44,31 @@ void MQTTInscrever(const char *topico);
 void MQTTInscreverMultiplos(const char *topicos[],int tamanho);
 
 static void mqtt_incoming_publish_cb(void *arg, const char *topic, u32_t tot_len) {
-    // printf("Topico: %s\n", topic);
+    printf("Topico: %s\n", topic);
+    strncpy(ultimoTopico, topic, sizeof(ultimoTopico) - 1);
 }
 
 static void mqtt_incoming_data_cb(void *arg, const u8_t *data, u16_t len, u8_t flags) {
 
-    if (len >= MQTT_MSG_MAX) len = MQTT_MSG_MAX - 1;
+    if (buffer_len + len >= MQTT_MSG_MAX) {
+        buffer_len = 0; // evita overflow
+        return;
+    }
 
-    memcpy(ultimaMensagem, data, len);
-    ultimaMensagem[len] = '\0';
-    // printf("Mensagem: %s\n",ultimaMensagem);
+    memcpy(buffer + buffer_len, data, len);
+    buffer_len += len;
 
-    novaMensagem = true;
+    // terminou a mensagem
+    if (flags & MQTT_DATA_FLAG_LAST) {
+        buffer[buffer_len] = '\0';
+
+        printf("Mensagem: %s\n", buffer);
+
+        strcpy(ultimaMensagem, buffer);
+        novaMensagem = true;
+
+        buffer_len = 0; // reset
+    }
 }
 
 static void mqtt_connection_cb(mqtt_client_t *client, void *arg, mqtt_connection_status_t status) {
@@ -123,7 +141,7 @@ void MQTTInscreverMultiplos(const char *topicos[],int tamanho){
         const char* topicoAtual = topicos[i];
         mqtt_subscribe(client, topicoAtual, 0, NULL, NULL);
         printf("%s\n",topicoAtual);
-        sleep_ms(500);
+        sleep_ms(2000);
     }
     printf("inscrito em todos os topicos!\n");
 

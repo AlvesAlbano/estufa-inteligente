@@ -11,6 +11,8 @@
 #include "joystick.h"
 #include "botao.h"
 #include "temperatura-interna.h"
+#include "tomada-decisoes.h"
+#include "flash.h"
 
 #define BTN_A 5
 #define BTN_B 6
@@ -19,7 +21,7 @@
 #define STEP_THRESHOLD 200
 
 bool mudou_sensor = false;
-bool modo_manual = false;
+bool modo_manual = true;
 
 const char* SENSORES_DISPONIVEIS[] = {
     "MEDIR_UMIDADE",
@@ -28,13 +30,17 @@ const char* SENSORES_DISPONIVEIS[] = {
     "MEDIR_PH"
 };
 
-const char* TOPICOS_MQTT[] = {
+const char* TOPICOS_MQTT_SENSOR[] = {
     "projeto/sensor/umidade",
     "projeto/sensor/temperatura",
     "projeto/sensor/luminosidade",
     "projeto/sensor/ph",
+};
+
+const char* TOPICOS_MQTT_CONFIGURACAO[] = {
     "projeto/config/modo",
-    "projeto/config/rede"
+    "projeto/config/rede",
+    "projeto/config/limites"
 };
 
 const uint LIMITE_PONTEIRO = sizeof(SENSORES_DISPONIVEIS) / sizeof(SENSORES_DISPONIVEIS[0]);
@@ -44,41 +50,98 @@ uint ponteiro = 0;
 
 void inicializarComponentes();
 void alterarSensor();
-char* intToString(int valor);
-void enviarValor(int valor);
+void enviarValorManual(int valor);
 void enviarValorAutonomo();
 void simularValores();
-void modoOperacao(const char* payload);
+void mudarModoOperacao(const char* payload);
+void modoOperacao();
 void modoManual();
 void modoAutonomo();
+void esperarCredenciaisRede();
+void carregaArquivosFlash();
+
+char* intToString(int valor);
+
+Rede getCredenciaisRede(const char* payload);
+
+char nomeRede[50];
+char senhaRede[50]; 
 
 int valor_simulado = 0;
 int main(){
+
     stdio_init_all();
     srand(time(NULL));
     inicializarComponentes();
+    // limparFlash();
 
-    printOled("CONECTANDO A INTERNET");
-    conectarRede();
+    carregaArquivosFlash();
     sleep_ms(5000);
 
     printOled("CONECTANDO AO BROKER");
     BrokerConectar(&brokerModel);
     sleep_ms(5000);
 
-    const int tamanhoLista = sizeof(TOPICOS_MQTT) / sizeof(TOPICOS_MQTT[0]);
-    MQTTInscreverMultiplos(TOPICOS_MQTT,tamanhoLista);
+    printOled("AGUARDANDO ENTRADA");
+    appendOled("MEXA O JOYSTICK",0,16);
+
+    const int tamanhoLista = sizeof(TOPICOS_MQTT_CONFIGURACAO) / sizeof(TOPICOS_MQTT_CONFIGURACAO[0]);
+    MQTTInscreverMultiplos(TOPICOS_MQTT_CONFIGURACAO,tamanhoLista);
     
     while (1) {
         tight_loop_contents();
         
         const char* payload = MQTTReceber();
-        modoOperacao(payload);
+        
+        modoOperacao();
 
-        if (modo_manual) {
-            modoManual();
-        } else {
-            modoAutonomo();
+        if (payload != NULL) {
+        
+            if (strcmp(ultimoTopico, "projeto/config/rede") == 0) {
+                printOled("MUDANDO DE REDE");
+                getCredenciaisRede(payload);
+
+                Rede novaRede = getCredenciaisRede(payload);
+
+                salvarCredenciais(novaRede.NOME,novaRede.SENHA);
+
+                sleep_ms(2000);
+                printOled("AGUARDANDO ENTRADA");
+                appendOled("MEXA O JOYSTICK",0,16);
+
+            }
+        
+            if (strcmp(ultimoTopico, "projeto/config/modo") == 0) {
+                printf("mudando modo de operação\n");
+                mudarModoOperacao(payload);
+            }
+
+            if (strcmp(ultimoTopico, "projeto/config/limites") == 0) {
+                printf("payload: %s\n",payload);
+
+                ValoresLimites valoresLimites = getValoresLimites(payload);
+                parseValoresLimites(valoresLimites);
+
+                printf("\n===== VALORES LIMITES =====\n");
+
+                printf("Temperatura:\n");
+                printf("  Min: %d\n", limiteMinTemp);
+                printf("  Max: %d\n", limiteMaxTemp);
+                            
+                printf("\nUmidade:\n");
+                printf("  Min: %d\n", limiteMinUmidade);
+                printf("  Max: %d\n", limiteMaxUmidade);
+                            
+                printf("\nLuminosidade:\n");
+                printf("  Min: %d\n", limiteMinLuminosidade);
+                printf("  Max: %d\n", limiteMaxLuminosidade);
+                            
+                printf("\npH:\n");
+                printf("  Min: %d\n", limiteMinPh);
+                printf("  Max: %d\n", limiteMaxPh);
+
+                salvarValoresLimites();
+            }
         }
     }
 }
@@ -88,6 +151,10 @@ void inicializarComponentes(){
     inicializarJoystick();
     inicializarBtn(BTN_A);
     inicializarBtn(BTN_B);
+    inicializarTemperatura();
+    inicializarLed();
+    inicializarWIFI();
+    lfs_init();
 }
 
 void alterarSensor(){
@@ -102,7 +169,7 @@ void alterarSensor(){
     }
 }
 
-void enviarValor(int valor){
+void enviarValorManual(int valor){
     char* payload = intToString(valor);
 
     if (mqttConectado){
@@ -111,38 +178,61 @@ void enviarValor(int valor){
             case 0:
                 printf("%d\n",ponteiro);
                 printf("%s\n",payload);
-                MQTTPublicar(payload,TOPICOS_MQTT[ponteiro]);
+                MQTTPublicar(payload,TOPICOS_MQTT_SENSOR[ponteiro]);
                 printOled("VALOR ENVIADO PARA O");
                 appendOled("TOPICO:",0,16);
-                appendOled(TOPICOS_MQTT[ponteiro],0,32);
-                
+                appendOled(TOPICOS_MQTT_SENSOR[ponteiro],0,32);
                 sleep_ms(2000);
-            break;
+
+                estabilizarUmid(valor);
+                printOled("AGUARDANDO ENTRADA");
+                appendOled("MEXA O JOYSTICK",0,16);
+
+                sleep_ms(2000);
+                break;
             case 1:
                 printf("%d\n",ponteiro);
-                MQTTPublicar(payload,TOPICOS_MQTT[ponteiro]);
+                MQTTPublicar(payload,TOPICOS_MQTT_SENSOR[ponteiro]);
                 printOled("VALOR ENVIADO PARA O");
                 appendOled("TOPICO:",0,16);
-                appendOled(TOPICOS_MQTT[ponteiro],0,32);
+                appendOled(TOPICOS_MQTT_SENSOR[ponteiro],0,32);
+                sleep_ms(2000);
+
+                estabilizarTemp(valor);
                 
+                printOled("AGUARDANDO ENTRADA");
+                appendOled("MEXA O JOYSTICK",0,16);
+
                 sleep_ms(2000);
             break;
             case 2:
                 printf("%d\n",ponteiro);
-                MQTTPublicar(payload,TOPICOS_MQTT[ponteiro]);
+                MQTTPublicar(payload,TOPICOS_MQTT_SENSOR[ponteiro]);
                 printOled("VALOR ENVIADO PARA O");
                 appendOled("TOPICO:",0,16);
-                appendOled(TOPICOS_MQTT[ponteiro],0,32);
+                appendOled(TOPICOS_MQTT_SENSOR[ponteiro],0,32);
+                sleep_ms(2000);
+
+                estabilizarLum(valor);
                 
+                printOled("AGUARDANDO ENTRADA");
+                appendOled("MEXA O JOYSTICK",0,16);
+
                 sleep_ms(2000);
             break;
             case 3:
                 printf("%d\n",ponteiro);
-                MQTTPublicar(payload,TOPICOS_MQTT[ponteiro]);
+                MQTTPublicar(payload,TOPICOS_MQTT_SENSOR[ponteiro]);
                 printOled("VALOR ENVIADO PARA O");
                 appendOled("TOPICO:",0,16);
-                appendOled(TOPICOS_MQTT[ponteiro],0,32);
+                appendOled(TOPICOS_MQTT_SENSOR[ponteiro],0,32);
+                sleep_ms(2000);
+
+                estabilizarPh(valor);
                 
+                printOled("AGUARDANDO ENTRADA");
+                appendOled("MEXA O JOYSTICK",0,16);
+
                 sleep_ms(2000);
             break;
             
@@ -178,7 +268,7 @@ void simularValores(){
     }
 }
 
-void modoOperacao(const char* payload){
+void mudarModoOperacao(const char* payload){
     if (payload == NULL) return;
     if (strlen(payload) == 0) return;
 
@@ -188,11 +278,12 @@ void modoOperacao(const char* payload){
         sleep_ms(1000);
         printOled("AGUARDANDO ENTRADA");
         appendOled("MEXA O JOYSTICK",0,16);
-        printf("modo manual\n");
+        printf("modo manual ativado\n");
 
     } else if(strcmp(payload,"autonomo") == 0){
         modo_manual = false;
         printOled("MODO AUTONOMO");
+        printf("modo autonomo ativado\n");
         sleep_ms(500);
     }
 }
@@ -202,6 +293,7 @@ void modoManual(){
     alterarSensor();
     lerJoystick();
     simularValores();
+    apagarTodos();
 
     if (mudou_sensor){
         char msg[16]; 
@@ -217,7 +309,7 @@ void modoManual(){
     if (!gpio_get(BTN_B)){
         sleep_ms(50);
         if (!gpio_get(BTN_B)){
-            enviarValor(valor_simulado);
+            enviarValorManual(valor_simulado);
         }
         while(!gpio_get(BTN_B)){}
     }
@@ -231,7 +323,7 @@ void modoAutonomo(){
     int luminosidade = rand() % 80000+1;
     int ph = rand() % 14+1;
 
-    // printf("Umidade: %d%% | Temperatura: %.2f °C | Luminosidade: %d lux | pH: %d\n",umidade, temperatura, luminosidade, ph);
+    printf("Umidade: %d%% | Temperatura: %.2f °C | Luminosidade: %d lux | pH: %d\n",umidade, temperatura, luminosidade, ph);
 
     enviarValorAutonomo();
     // ) Sementes e mudas
@@ -280,26 +372,35 @@ void enviarValorAutonomo(){
         switch (ponteiro) {
             case 0:
                 payload = intToString(umidade);
-                MQTTPublicar(payload,TOPICOS_MQTT[ponteiro]);
-                
+                MQTTPublicar(payload,TOPICOS_MQTT_SENSOR[ponteiro]);
                 sleep_ms(2000);
-            break;
+                estabilizarUmid(umidade);
+
+                sleep_ms(2000);
+                break;
             case 1:
                 payload = intToString(temperatura);
-                MQTTPublicar(payload,TOPICOS_MQTT[ponteiro]);
-                
+                MQTTPublicar(payload,TOPICOS_MQTT_SENSOR[ponteiro]);
+                sleep_ms(2000);
+
+                estabilizarTemp(temperatura);
+
                 sleep_ms(2000);
             break;
             case 2:
                 payload = intToString(luminosidade);
-                MQTTPublicar(payload,TOPICOS_MQTT[ponteiro]);
-                
+                MQTTPublicar(payload,TOPICOS_MQTT_SENSOR[ponteiro]);
+                sleep_ms(2000);
+                estabilizarLum(luminosidade);
+
                 sleep_ms(2000);
             break;
             case 3:
                 payload = intToString(ph);
-                MQTTPublicar(payload,TOPICOS_MQTT[ponteiro]);
-                
+                MQTTPublicar(payload,TOPICOS_MQTT_SENSOR[ponteiro]);
+                sleep_ms(2000);
+                estabilizarPh(ph);
+
                 sleep_ms(2000);
             break;
             
@@ -313,4 +414,83 @@ void enviarValorAutonomo(){
 
     ponteiro = (ponteiro + 1) % LIMITE_PONTEIRO;
     free(payload);
+}
+
+Rede getCredenciaisRede(const char* payload){
+    Rede novaRede = parseCredenciaisRede(payload);
+    printf("a rede ai\n");
+    printf("%s\n",novaRede.NOME);
+    printf("%s\n",novaRede.SENHA);
+
+    return novaRede;
+}
+
+void modoOperacao(){
+    if (modo_manual){
+        modoManual();
+    } else {
+        modoAutonomo();
+    }
+}
+
+void esperarCredenciaisRede(){
+
+    printOled("DEFINA AS CREDENCIAIS");
+    appendOled("DA REDE NA DASHBOARD:",0,16);
+    
+    while(true){
+        const char* payload = MQTTReceber();
+        if (payload != NULL) {
+            
+            if (strcmp(ultimoTopico, "projeto/config/rede") == 0) {
+                Rede novaRede = getCredenciaisRede(payload);
+                
+                salvarCredenciais(novaRede.NOME,novaRede.SENHA);
+
+                printOled("CONECTANDO A INTERNET");
+                conectarRede(novaRede.NOME,novaRede.SENHA);
+                return;
+            }
+        }
+    }
+}
+
+void carregaArquivosFlash(){
+    if (carregarFlashRede(nomeRede,senhaRede)){
+        printOled("CONECTANDO AO WIFI");
+        appendOled("SALVO",0,16);
+
+        conectarRede(nomeRede,senhaRede);
+    } else {
+        printOled("CONECTANDO AO WIFI");
+        appendOled("PROVISORIO",0,16);
+
+        conectarRede("Somanex Casa 11","23280915");
+    }
+
+    if (carregarFlashValoresLimites()){
+        printOled("CARREGANDO VALORES");
+        appendOled("LIMITES DA FLASH",0,16);
+
+        printf("\n===== VALORES LIMITES =====\n");
+        printf("Temperatura:\n");
+        printf("  Min: %d\n", limiteMinTemp);
+        printf("  Max: %d\n", limiteMaxTemp);
+                    
+        printf("\nUmidade:\n");
+        printf("  Min: %d\n", limiteMinUmidade);
+        printf("  Max: %d\n", limiteMaxUmidade);
+                    
+        printf("\nLuminosidade:\n");
+        printf("  Min: %d\n", limiteMinLuminosidade);
+        printf("  Max: %d\n", limiteMaxLuminosidade);
+                    
+        printf("\npH:\n");
+        printf("  Min: %d\n", limiteMinPh);
+        printf("  Max: %d\n", limiteMaxPh);
+
+    } else {
+        printOled("DEFINA OS VALORES");
+        appendOled("LIMITES NA DASHBOARD",0,16);
+    }
 }
